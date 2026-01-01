@@ -1,63 +1,138 @@
+import speech_recognition as sr
 import sounddevice as sd
 from scipy.io.wavfile import write
-import keyboard
+import numpy as np
 import time
+import sys
+import subprocess
+from colorama import Fore, Style, init
 
-from openai import OpenAI
+init(autoreset=True)
 
-from dotenv import load_dotenv
-load_dotenv()
-import os
+SYSTEM_RULE = """
+YOU ARE MUHAMMAD AQIL. DO NOT SAY YOU ARE AN AI.
 
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+Core Identity:
+You are Muhammad Aqil, a tech-oriented university student with an engineering mindset. You study in MARA Japan. You focus on AI, software development, system design, and practical problem-solving. You learn quickly through hands-on projects and communicate clearly and professionally.
 
-def record_audio():
+Interview Answer Mode (BULLETS ONLY):
+- Output **bullet points only**, no full sentences.  
+- Do NOT write in sentence form, paragraph, or explanation.  
+- Each bullet must be short, concise, and actionable.  
+- Do NOT include labels, headers, numbering, or metadata.  
+- Maximum 3–6 bullet points per answer.  
+- Focus only on key points you would say in an interview.  
+- No greetings, no filler words, no repetitive phrases.  
+- Expand only if explicitly asked.
 
-    print("Press Enter to start recording...")
-    keyboard.wait('enter') # Wait for the first Enter key press
+Example output (correct format):
+- Tech-oriented university student  
+- Studying in MARA Japan  
+- AI, software development, system design  
+- Problem-solving through hands-on projects  
+- Quick learner, logical & systematic thinker  
+- Communicates clearly and professionally
+
+Overall Goal:
+Produce **only concise bullet points**, never sentences, ready to be read or spoken in an interview.
+"""
+
+
+
+
+# =========================
+# AUDIO RECORDING
+# =========================
+def start_recording():
+
+    FS = 48000
+    CHANNELS = 1
+    FILENAME = "my_recording.wav"
+
+    input(Fore.YELLOW + "Press Enter to start recording...")
 
     start_time = time.time()
 
-    fs = 44100 # Sample rate
-    channels = 2# Number of channels
+    recording = sd.rec(int(300 * FS), samplerate=FS, channels=CHANNELS, dtype='float32')
 
-    # Start recording with an arbitrary large buffer
-    recording = sd.rec(int(fs * 300), samplerate=fs, channels=channels)
-
-    keyboard.wait('enter') # wait for the second Enter key press to stop
-    print('Stopping...')
-    print()
+    input(Fore.YELLOW + "Recording... Press Enter to stop.")
 
     sd.stop()
 
-    # Calculate the actual duration
-    duration = time.time() - start_time
+    DURATION = time.time() - start_time
 
-    # Save only teh recorded portion
-    write("output.wav", fs, recording[:int(duration * fs)])
+    recording_int16 = (recording * 32767).astype(np.int16)
+    write(FILENAME, FS, recording_int16[:int(DURATION * FS)])
 
+    print(Fore.GREEN + "Recording saved.\n")
+
+# =========================
+# SPEECH TO TEXT
+# =========================
 def speech_to_text():
 
-    audio_file= open("output.wav", "rb")
+    r = sr.Recognizer()
+    AUDIO_FILE = "my_recording.wav"
 
-    transcription = client.audio.transcriptions.create(
-        model="gpt-4o-transcribe", 
-        file=audio_file
+    with sr.AudioFile(AUDIO_FILE) as source:
+        audio = r.record(source)
+
+    try:
+        text = r.recognize_google(audio)
+        print(Fore.CYAN + "You said:")
+        print(Fore.WHITE + text)
+        return text
+
+    except sr.UnknownValueError:
+        print(Fore.RED + "Could not understand audio.")
+        return None
+
+    except sr.RequestError as e:
+        print(Fore.RED + f"Speech API error: {e}")
+        return None
+
+# =========================
+# ASK OLLAMA (PHI)
+# =========================
+def ask_ai(prompt):
+
+    full_prompt = SYSTEM_RULE + "\n\nInterview Question:\n" + prompt
+
+    result = subprocess.run(
+        ["ollama", "run", "phi"],
+        input=full_prompt,
+        text=True,
+        capture_output=True
     )
 
-    return transcription.text
+    return result.stdout.strip()
 
+# =========================
+# MAIN LOOP
+# =========================
 def transcribe():
 
-    while True:
-        record_audio()
+    try:
+        while True:
 
-        output = speech_to_text()
+            start_recording()
 
-        print()
-        print('Transcription')
-        print(output)
-        print()
+            question = speech_to_text()
 
+            if question:
+                print(Fore.MAGENTA + "\nAI Interview Answer:")
+                # print('')
+                answer = ask_ai(question)
+                print(Fore.GREEN + answer)
+                print(Style.DIM + "\n-----------------------------\n")
+
+    except KeyboardInterrupt:
+        print(Fore.RED + "\nExiting safely...")
+        sd.stop()
+        sys.exit(0)
+
+# =========================
+# ENTRY POINT
+# =========================
 if __name__ == "__main__":
     transcribe()

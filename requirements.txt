@@ -1,5 +1,0 @@
-openai
-python-dotenv
-sounddevice
-scipy
-keyboard
