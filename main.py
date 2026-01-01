@@ -38,7 +38,7 @@ def record_audio():
 
 def speech_to_text():
 
-    audio_file= open("output", "rb")
+    audio_file= open("output.wav", "rb")
 
     transcription = client.audio.transcriptions.create(
         model="gpt-4o-transcribe", 
