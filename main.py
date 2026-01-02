@@ -41,7 +41,7 @@ Produce **only concise bullet points**, never sentences, ready to be read or spo
 
 
 # =========================
-# AUDIO RECORDING
+# AUDIO RECORDIN
 # =========================
 def start_recording():
 
