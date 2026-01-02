@@ -41,12 +41,12 @@ Produce **only concise bullet points**, never sentences, ready to be read or spo
 
 
 # =========================
-# AUDIO RECORDIN
+# AUDIO RECORDING
 # =========================
 def start_recording():
 
-    FS = 48000
-    CHANNELS = 1
+    FS = 16000
+    CHANNELS = 2
     FILENAME = "my_recording.wav"
 
     input(Fore.YELLOW + "Press Enter to start recording...")
@@ -77,19 +77,21 @@ def speech_to_text():
     with sr.AudioFile(AUDIO_FILE) as source:
         audio = r.record(source)
 
-    try:
-        text = r.recognize_google(audio)
-        print(Fore.CYAN + "You said:")
-        print(Fore.WHITE + text)
-        return text
+    while True:
+        try:
+            text = r.recognize_google(audio)
+            print(Fore.CYAN + "You said:")
+            print(Fore.WHITE + text)
+            return text
+            break
 
-    except sr.UnknownValueError:
-        print(Fore.RED + "Could not understand audio.")
-        return None
+        except sr.UnknownValueError:
+            print(Fore.RED + "Could not understand audio.")
+            # return None
 
-    except sr.RequestError as e:
-        print(Fore.RED + f"Speech API error: {e}")
-        return None
+        except sr.RequestError as e:
+            print(Fore.RED + f"Speech API error: {e}")
+            # return None
 
 # =========================
 # ASK OLLAMA (PHI)
