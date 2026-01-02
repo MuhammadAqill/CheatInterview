@@ -32,6 +32,7 @@ Example output (correct format):
 Overall Goal:
 - answer like profesional and like human.
 - give a short answer
+- don take so long to answer
 """
 
 
@@ -74,21 +75,19 @@ def speech_to_text():
     with sr.AudioFile(AUDIO_FILE) as source:
         audio = r.record(source)
 
-    while True:
-        try:
-            text = r.recognize_google(audio)
-            print(Fore.CYAN + "You said:")
-            print(Fore.WHITE + text)
-            return text
-            break
+    try:
+        text = r.recognize_google(audio)
+        print(Fore.CYAN + "You said:")
+        print(Fore.WHITE + text)
+        return text
 
-        except sr.UnknownValueError:
-            print(Fore.RED + "Could not understand audio.")
-            # return None
+    except sr.UnknownValueError:
+        print(Fore.RED + "Could not understand audio.")
+        return None
 
-        except sr.RequestError as e:
-            print(Fore.RED + f"Speech API error: {e}")
-            # return None
+    except sr.RequestError as e:
+        print(Fore.RED + f"Speech API error: {e}")
+        return None
 
 # =========================
 # ASK OLLAMA (PHI)
