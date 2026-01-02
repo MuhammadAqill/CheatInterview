@@ -4,9 +4,6 @@
 # Large audio recordings
 my_recording.wav
 
-# GPT4All binary
-ggml-gpt4all-j.bin
-
 # Python cache (optional, tapi bagus)
 __pycache__/
 *.pyc
