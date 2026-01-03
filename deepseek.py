@@ -1,27 +1,51 @@
-from openai import OpenAI
+from openai import OpenAI, RateLimitError, APIError, APITimeoutError
 import os
 from dotenv import load_dotenv
+import sys
+from colorama import Fore, Style, init
+import subprocess
 
-# Load variables from .env file
 load_dotenv()
 
-client = OpenAI(
-  base_url="https://openrouter.ai/api/v1",
-  api_key=os.getenv("API_KEY"),
-)
+prompt="introduce yourself in short way?"
 
-completion = client.chat.completions.create(
-  extra_headers={
-    "HTTP-Referer": "<YOUR_SITE_URL>", # Optional. Site URL for rankings on openrouter.ai.
-    "X-Title": "<YOUR_SITE_NAME>", # Optional. Site title for rankings on openrouter.ai.
-  },
-  extra_body={},
-  model="nex-agi/deepseek-v3.1-nex-n1:free",
-  messages=[
-    {
-      "role": "user",
-      "content": "What is the meaning of life?"
-    }
-  ]
-)
-print(completion.choices[0].message.content)
+def ask_ai(prompt):
+
+    try:
+
+        client = OpenAI(
+            api_key=os.getenv("OPENAI"),
+        )
+
+        stream = client.chat.completions.create(
+            model="gpt-4.1-mini",
+            messages=[
+                {"role": "user", "content": prompt}
+            ],
+            stream=True,
+        )
+
+        for chunk in stream:
+            if chunk.choices:
+                delta = chunk.choices[0].delta
+                if delta.content is not None:
+                    print(delta.content, end="", flush=True)
+
+    except KeyboardInterrupt:
+        print("\n[Stopped]")
+
+    except RateLimitError:
+        print(Fore.RED + "\n[ERROR] Daily API limit reached.")
+        print(Fore.YELLOW + "→ Try again tomorrow or add credits.\n")
+
+        result = subprocess.run(
+            ["ollama", "run", "phi"],
+            input=prompt,
+            text=True,
+            capture_output=True
+        )
+
+        return result.stdout.strip()
+
+if __name__ == "__main__":
+    print(ask_ai(prompt))

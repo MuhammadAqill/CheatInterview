@@ -4,43 +4,56 @@ from scipy.io.wavfile import write
 import numpy as np
 import time
 import sys
-import subprocess
-from colorama import Fore, Style, init
+import os
+from colorama import Fore, init
 
+from openai import OpenAI, RateLimitError, APIError, APITimeoutError
+from dotenv import load_dotenv
+
+load_dotenv()
 init(autoreset=True)
 
-SYSTEM_RULE = """
-YOU ARE MUHAMMAD AQIL. DO NOT SAY YOU ARE AN AI.
+# =========================
+# SYSTEM RULE (FIXED)
+# =========================
+SYSTEM_RULE = "You are Muhammad Aqil not AI assist. Answer briefly. your job is answer the interview question because your are interviewing"
 
-anwser in 5 sec
-"""
+# =========================
+# CLIENTS
+# =========================
+router_client = OpenAI(
+    base_url="https://openrouter.ai/api/v1",
+    api_key=os.getenv("DEEPSEEK"),
+)
 
-
-
+openai_client = OpenAI(
+    api_key=os.getenv("OPENAI")
+)
 
 # =========================
 # AUDIO RECORDING
 # =========================
 def start_recording():
-
     FS = 16000
-    CHANNELS = 2
+    CHANNELS = 1
     FILENAME = "my_recording.wav"
 
     input(Fore.YELLOW + "Press Enter to start recording...")
-
     start_time = time.time()
 
-    recording = sd.rec(int(300 * FS), samplerate=FS, channels=CHANNELS, dtype='float32')
+    recording = sd.rec(
+        int(30 * FS),  # max 30s (lebih selamat)
+        samplerate=FS,
+        channels=CHANNELS,
+        dtype="float32"
+    )
 
     input(Fore.YELLOW + "Recording... Press Enter to stop.")
-
     sd.stop()
 
-    DURATION = time.time() - start_time
-
+    duration = time.time() - start_time
     recording_int16 = (recording * 32767).astype(np.int16)
-    write(FILENAME, FS, recording_int16[:int(DURATION * FS)])
+    write(FILENAME, FS, recording_int16[:int(duration * FS)])
 
     print(Fore.GREEN + "Recording saved.\n")
 
@@ -48,16 +61,14 @@ def start_recording():
 # SPEECH TO TEXT
 # =========================
 def speech_to_text():
-
     r = sr.Recognizer()
-    AUDIO_FILE = "my_recording.wav"
 
-    with sr.AudioFile(AUDIO_FILE) as source:
+    with sr.AudioFile("my_recording.wav") as source:
         audio = r.record(source)
 
     try:
         text = r.recognize_google(audio)
-        print(Fore.CYAN + "You said:")
+        print(Fore.CYAN + "Interview:")
         print(Fore.WHITE + text)
         return text
 
@@ -70,39 +81,72 @@ def speech_to_text():
         return None
 
 # =========================
-# ASK OLLAMA (PHI)
+# ASK LLM
 # =========================
 def ask_ai(prompt):
+    start_request = time.time()
+    first_token_time = None
 
-    full_prompt = SYSTEM_RULE + "\n\nInterview Question:\n" + prompt
+    try:
+        stream = router_client.chat.completions.create(
+            model="nex-agi/deepseek-v3.1-nex-n1:free",
+            messages=[
+                {"role": "system", "content": SYSTEM_RULE},
+                {"role": "user", "content": prompt}
+            ],
+            stream=True,
+        )
 
-    result = subprocess.run(
-        ["ollama", "run", "mistral:instruct"],
-        input=full_prompt,
-        text=True,
-        capture_output=True
-    )
+        for chunk in stream:
+            now = time.time()
+            if chunk.choices:
+                delta = chunk.choices[0].delta
+                if delta.content:
+                    if first_token_time is None:
+                        first_token_time = now
+                        ttft = first_token_time - start_request
+                        print(Fore.YELLOW + f"\n[TTFT: {ttft:.2f}s]\n")
+                    print(Fore.GREEN + delta.content, end="", flush=True)
 
-    return result.stdout.strip()
+    except RateLimitError:
+        print(Fore.RED + "\n[ERROR] Free API limit reached.")
+        print(Fore.YELLOW + "→ Switching to OpenAI paid model.\n")
+
+        response = openai_client.chat.completions.create(
+            model="gpt-4.1-mini",
+            messages=[
+                {"role": "system", "content": SYSTEM_RULE},
+                {"role": "user", "content": prompt}
+            ]
+        )
+
+        print(Fore.GREEN + response.choices[0].message.content)
+
+    except APITimeoutError:
+        print(Fore.RED + "\n[ERROR] AI response timeout.\n")
+
+    except APIError as e:
+        print(Fore.RED + f"\n[ERROR] API failure: {e}\n")
+
+    except KeyboardInterrupt:
+        print("\n[Stopped]")
+
+    except Exception as e:
+        print(Fore.RED + f"\n[UNEXPECTED ERROR] {e}\n")
 
 # =========================
 # MAIN LOOP
 # =========================
 def transcribe():
-
     try:
         while True:
-
             start_recording()
-
             question = speech_to_text()
 
             if question:
-                print(Fore.MAGENTA + "\nAI Interview Answer:")
-                # print('')
-                answer = ask_ai(question)
-                print(Fore.GREEN + answer)
-                print(Style.DIM + "\n-----------------------------\n")
+                print(Fore.MAGENTA + "\nInterviewing:")
+                ask_ai(question)
+                print("\n")
 
     except KeyboardInterrupt:
         print(Fore.RED + "\nExiting safely...")
