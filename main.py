@@ -171,6 +171,8 @@ class LLMProcessor:
     
     def ask_ai(self, prompt: str) -> None:
 
+        sys.exit()
+
         self.start_time = time.time()
 
         """Optimized AI query with rate limiting and caching"""
