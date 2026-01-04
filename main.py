@@ -167,8 +167,12 @@ class LLMProcessor:
         self.response_cache = {}  # Simple cache to avoid duplicate processing
         self.last_request_time = 0
         self.min_request_interval = 0.5  # Prevent rapid successive calls
+        self.start_time = 0
     
     def ask_ai(self, prompt: str) -> None:
+
+        self.start_time = time.time()
+
         """Optimized AI query with rate limiting and caching"""
         current_time = time.time()
         
@@ -200,6 +204,10 @@ class LLMProcessor:
                 # max_tokens=20,  # Limit response size
                 temperature=0.7,
             )
+
+            duration = time.time() - self.start_time()
+
+            print(f'respone time: {duration:.1f}\n')
             
             response_text = ""
             for chunk in stream:
@@ -212,8 +220,10 @@ class LLMProcessor:
                             print(Fore.YELLOW + f"\n[TTFT: {ttft:.2f}s]\n")
                         
                         content = delta.content
+
                         print(Fore.GREEN + content, end="", flush=True)
                         response_text += content
+                        
             
             # Cache the response
             if response_text:
