@@ -1,11 +1,9 @@
 # Environment file
 .env
 
-# Large audio recordings
+# Ignore files
 my_recording.wav
-
-# GPT4All binary
-ggml-gpt4all-j.bin
+test/
 
 # Python cache (optional, tapi bagus)
 __pycache__/
