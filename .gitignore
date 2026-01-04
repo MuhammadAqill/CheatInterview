@@ -1,8 +1,9 @@
 # Environment file
 .env
 
-# Large audio recordings
+# Ignore files
 my_recording.wav
+test/
 
 # Python cache (optional, tapi bagus)
 __pycache__/
