@@ -160,6 +160,20 @@ def speech_to_text_optimized(filename: str) -> Optional[str]:
         return None
 
 # =========================
+# USE LOCAL AI
+# =========================
+class LocalAI:
+    def __init__(self, choose):
+        self.choose = choose
+
+    def start_chose():
+        if self.choose == "y":
+            return "y"
+        
+        else:
+            return None
+
+# =========================
 # ASYNC LLM QUERY WITH CACHING
 # =========================
 class LLMProcessor:
@@ -170,95 +184,106 @@ class LLMProcessor:
         self.start_time = 0
     
     def ask_ai(self, prompt: str) -> None:
+        sys.exit()
 
         self.start_time = time.time()
 
-        """Optimized AI query with rate limiting and caching"""
-        current_time = time.time()
-        
-        # Rate limiting
-        if current_time - self.last_request_time < self.min_request_interval:
-            time.sleep(self.min_request_interval)
-        
-        self.last_request_time = current_time
-        
-        # Check cache (simple hash)
-        prompt_hash = hash(prompt)
-        if prompt_hash in self.response_cache:
-            print(Fore.YELLOW + "\n[CACHED RESPONSE]\n")
-            print(Fore.GREEN + self.response_cache[prompt_hash])
-            return
-        
-        start_request = time.time()
-        first_token_time = None
-        
-        try:
-            # Try router client first
-            stream = router_client.chat.completions.create(
-                model="nex-agi/deepseek-v3.1-nex-n1:free",
-                messages=[
-                    {"role": "system", "content": SYSTEM_RULE_DEEPSEEK},
-                    {"role": "user", "content": prompt}
-                ],
-                stream=True,
-                # max_tokens=20,  # Limit response size
-                temperature=0.7,
-            )
+        localAI = LocalAI(option)
 
-            duration = time.time() - self.start_time()
-
-            print(f'respone time: {duration:.1f}\n')
+        # Decision to if user local AI or NOT
+        if localAI.choose == "y":
+            print("yoooo")
             
-            response_text = ""
-            for chunk in stream:
-                if chunk.choices:
-                    delta = chunk.choices[0].delta
-                    if delta.content:
-                        if first_token_time is None:
-                            first_token_time = time.time()
-                            ttft = first_token_time - start_request
-                            print(Fore.YELLOW + f"\n[TTFT: {ttft:.2f}s]\n")
-                        
-                        content = delta.content
+        
+        else:
+            sys.exit(0)
 
-                        print(Fore.GREEN + content, end="", flush=True)
-                        response_text += content
-                        
+            """Optimized AI query with rate limiting and caching"""
+            current_time = time.time()
             
-            # Cache the response
-            if response_text:
+            # Rate limiting
+            if current_time - self.last_request_time < self.min_request_interval:
+                time.sleep(self.min_request_interval)
+            
+            self.last_request_time = current_time
+            
+            # Check cache (simple hash)
+            prompt_hash = hash(prompt)
+            if prompt_hash in self.response_cache:
+                print(Fore.YELLOW + "\n[CACHED RESPONSE]\n")
+                print(Fore.GREEN + self.response_cache[prompt_hash])
+                return
+            
+            start_request = time.time()
+            first_token_time = None
+            
+            try:
+                # Try router client first
+                stream = router_client.chat.completions.create(
+                    model="nex-agi/deepseek-v3.1-nex-n1:free",
+                    messages=[
+                        {"role": "system", "content": SYSTEM_RULE_DEEPSEEK},
+                        {"role": "user", "content": prompt}
+                    ],
+                    stream=True,
+                    # max_tokens=20,  # Limit response size
+                    temperature=0.7,
+                )
+
+                # duration = time.time() - self.start_time()
+
+                # print(f'respone time: {duration:.1f}\n')
+                
+                response_text = ""
+                for chunk in stream:
+                    if chunk.choices:
+                        delta = chunk.choices[0].delta
+                        if delta.content:
+                            if first_token_time is None:
+                                first_token_time = time.time()
+                                ttft = first_token_time - start_request
+                                print(Fore.YELLOW + f"\n[TTFT: {ttft:.2f}s]\n")
+                            
+                            content = delta.content
+
+                            print(Fore.GREEN + content, end="", flush=True)
+                            response_text += content
+                            
+                
+                # Cache the response
+                if response_text:
+                    self.response_cache[prompt_hash] = response_text
+                
+            except RateLimitError:
+                print(Fore.RED + "\n[ERROR] Free API limit reached.")
+                print(Fore.YELLOW + "→ Switching to OpenAI paid model.\n")
+                
+                # Use OpenAI as fallback
+                response = openai_client.chat.completions.create(
+                    model="gpt-4o-mini",  # Updated to newer, faster model
+                    messages=[
+                        {"role": "system", "content": SYSTEM_RULE},
+                        {"role": "user", "content": prompt}
+                    ],
+                    # max_tokens=20,
+                    temperature=0.7,
+                )
+                
+                response_text = response.choices[0].message.content
+                print(Fore.GREEN + response_text)
                 self.response_cache[prompt_hash] = response_text
-            
-        except RateLimitError:
-            print(Fore.RED + "\n[ERROR] Free API limit reached.")
-            print(Fore.YELLOW + "→ Switching to OpenAI paid model.\n")
-            
-            # Use OpenAI as fallback
-            response = openai_client.chat.completions.create(
-                model="gpt-4o-mini",  # Updated to newer, faster model
-                messages=[
-                    {"role": "system", "content": SYSTEM_RULE},
-                    {"role": "user", "content": prompt}
-                ],
-                # max_tokens=20,
-                temperature=0.7,
-            )
-            
-            response_text = response.choices[0].message.content
-            print(Fore.GREEN + response_text)
-            self.response_cache[prompt_hash] = response_text
-            
-        except APITimeoutError:
-            print(Fore.RED + "\n[ERROR] AI response timeout.\n")
-            
-        except APIError as e:
-            print(Fore.RED + f"\n[ERROR] API failure: {e}\n")
-            
-        except KeyboardInterrupt:
-            print("\n[Stopped]")
-            
-        except Exception as e:
-            print(Fore.RED + f"\n[UNEXPECTED ERROR] {e}\n")
+                
+            except APITimeoutError:
+                print(Fore.RED + "\n[ERROR] AI response timeout.\n")
+                
+            except APIError as e:
+                print(Fore.RED + f"\n[ERROR] API failure: {e}\n")
+                
+            except KeyboardInterrupt:
+                print("\n[Stopped]")
+                
+            except Exception as e:
+                print(Fore.RED + f"\n[UNEXPECTED ERROR] {e}\n")
 
 # =========================
 # MAIN LOOP WITH PARALLEL PROCESSING
@@ -301,6 +326,7 @@ def transcribe_optimized():
 # ENTRY POINT
 # =========================
 if __name__ == "__main__":
+
     # Pre-warm components
     print(Fore.BLUE + "Initializing speech recognition system...")
     
@@ -311,6 +337,13 @@ if __name__ == "__main__":
     except Exception as e:
         print(Fore.RED + f"Audio system error: {e}")
         sys.exit(1)
+
+    # Choose to use local AI
+    print("Use local AI? (Y/N): ")
+    option = input()
+
+    if option == "y":
+        yes = LocalAI("y")
     
     # Run optimized transcription
     transcribe_optimized()
