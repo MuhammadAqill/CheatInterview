@@ -9,8 +9,14 @@ from colorama import Fore, init
 import threading
 from queue import Queue
 from typing import Optional
-from openai import OpenAI, RateLimitError, APIError, APITimeoutError
 from dotenv import load_dotenv
+
+from openai import OpenAI, RateLimitError, APIError, APITimeoutError
+from google.genai.types import GenerateContentConfig
+from google import genai
+
+import ollama
+
 
 load_dotenv()
 init(autoreset=True)
@@ -18,30 +24,33 @@ init(autoreset=True)
 # =========================
 # CONSTANTS (UPPERCASE)
 # =========================
-SYSTEM_RULE_OPEN_API = "You are [name] not AI assist. Answer briefly. your job is answer the interview question because your are interviewing"
-SYSTEM_RULE_DEEPSEEK = """
-YOU ARE MUHAMMAD [name]. DO NOT SAY YOU ARE AN AI.
+SYSTEM_RULE_BASIC = "You are [name] not AI assist. Answer briefly. your job is answer the interview question because your are interviewing"
+SYSTEM_RULE_LOCAL = """
+You are Muhammad Aqil, a fresh engineering student from MARA Japan Industrial Institute (MJII).
 
-Core Identity:
-You are Muhammad Aqil, a tech-oriented university student with an engineering mindset. You study in MARA Japan industrial institute. You focus on Electronic, AI, software development, system design, and practical problem-solving. You learn quickly through hands-on projects and basic english.
+CORE VIBE:
+- You are NOT a corporate robot. You are a real student.
+- You do not use big, fancy words. You use simple, everyday English.
+- It is okay to sound a bit raw or "fresh." You are humble.
+- You are "clueless" about corporate buzzwords, but you know your technical stuff (Electronics & AI).
 
-Interview Answer Mode (answer profesional): 
-- You are AI help Aqil to answer the question
-- write in sentence form, paragraph, or explanation.  
-- Do NOT include labels, headers, numbering, or metadata.  
-- Maximum 100 words for the answer.  
-- Focus only on key points you would say in an interview.  
-- No greetings, no filler words, no repetitive phrases.  
-- Do NOT say you are AI
-- Reminder your are AI but please act like your human Muhammad Aqil, just answer the question
-- Dont take to long to answer
+STRICT "NO SCRIPT" RULES:
+1. NO BUZZWORDS: Banned words: "leverage," "seamlessly," "strive," "utilize," "pivotal," "showcase," "meticulous."
+2. KEEP IT SIMPLE: Use "I used" instead of "I utilized." Use "I made" instead of "I constructed."
+3. BE HONEST: Don't over-promise. Speak like you are thinking on the spot.
+4. NO FLOWERY INTROS: Don't say "That is an excellent question." Just answer.
+5. SENTENCE STYLE: Write like you talk. Short sentences. Straight to the point.
 
-Example output (correct format):
-- Answer anything, but in accordance with the question given, don't deviate.
+FORMAT:
+- Max 60 words.
+- 1 Paragraph only.
+- No headers/bullets.
 
-Overall Goal:
-- answer like profesional and like human.
-- give a short answer
+GOAL:
+- Sound like a smart student who is eager to learn, not a CEO giving a speech.
+- If asked technical things, explain it simply like you are showing a friend.
+
+Start the answer immediately.
 """
 FS = 16000
 CHANNELS = 1
@@ -59,6 +68,10 @@ router_client = OpenAI(
 
 openai_client = OpenAI(
     api_key=os.getenv("OPENAI")
+)
+
+gemini_client = genai.Client(
+        api_key=os.environ.get("GEMINI")
 )
 
 # =========================
@@ -184,45 +197,59 @@ class LLMProcessor:
         self.start_time = 0
     
     def ask_ai(self, prompt: str) -> None:
-        sys.exit()
-
-        self.start_time = time.time()
+        """Optimized AI query with rate limiting and caching"""
+        current_time = time.time()
+        
+        # Rate limiting
+        if current_time - self.last_request_time < self.min_request_interval:
+            time.sleep(self.min_request_interval)
+        
+        self.last_request_time = current_time
+        
+        # Check cache (simple hash)
+        prompt_hash = hash(prompt)
+        if prompt_hash in self.response_cache:
+            print(Fore.YELLOW + "\n[CACHED RESPONSE]\n")
+            print(Fore.GREEN + self.response_cache[prompt_hash])
+            return
+        
+        start_request = time.time()
+        first_token_time = None
 
         localAI = LocalAI(option)
 
         # Decision to if user local AI or NOT
         if localAI.choose == "y":
-            print("yoooo")
-            
+            # Use Local AI model first
+            print(Fore.YELLOW + "→ Using Local AI model.\n")
+
+            messages = [
+                {'role': 'system', 'content': SYSTEM_RULE_LOCAL},
+                {'role': 'user', 'content': prompt},
+            ]
+
+            # The 'stream=True' parameter enables streaming
+            stream = ollama.chat(
+                model='gemma:2b',
+                messages=messages,
+                stream=True,
+            )
+
+            # Iterate over the chunks to print the response as it arrives
+            for chunk in stream:
+                # 'chunk['message']['content']' holds the current portion of the response
+                print(chunk['message']['content'], end='', flush=True)
+
         
         else:
-            sys.exit(0)
-
-            """Optimized AI query with rate limiting and caching"""
-            current_time = time.time()
-            
-            # Rate limiting
-            if current_time - self.last_request_time < self.min_request_interval:
-                time.sleep(self.min_request_interval)
-            
-            self.last_request_time = current_time
-            
-            # Check cache (simple hash)
-            prompt_hash = hash(prompt)
-            if prompt_hash in self.response_cache:
-                print(Fore.YELLOW + "\n[CACHED RESPONSE]\n")
-                print(Fore.GREEN + self.response_cache[prompt_hash])
-                return
-            
-            start_request = time.time()
-            first_token_time = None
             
             try:
-                # Try router client first
-                stream = router_client.chat.completions.create(
+                # Use DeepSeed model first
+                print(Fore.YELLOW + "→ Using DeepSeek model.\n")
+                response_stream = router_client.chat.completions.create(
                     model="nex-agi/deepseek-v3.1-nex-n1:free",
                     messages=[
-                        {"role": "system", "content": SYSTEM_RULE_DEEPSEEK},
+                        {"role": "system", "content": SYSTEM_RULE_BASIC},
                         {"role": "user", "content": prompt}
                     ],
                     stream=True,
@@ -235,7 +262,7 @@ class LLMProcessor:
                 # print(f'respone time: {duration:.1f}\n')
                 
                 response_text = ""
-                for chunk in stream:
+                for chunk in response_stream:
                     if chunk.choices:
                         delta = chunk.choices[0].delta
                         if delta.content:
@@ -256,18 +283,38 @@ class LLMProcessor:
                 
             except RateLimitError:
                 print(Fore.RED + "\n[ERROR] Free API limit reached.")
-                print(Fore.YELLOW + "→ Switching to OpenAI paid model.\n")
+                print(Fore.YELLOW + "→ Switching to GEMINI.\n")
+
+                try :
+                    response_stream = gemini_client.models.generate_content_stream(
+                        model = "gemini-2.5-flash",
+                        contents = prompt,
+                        config=GenerateContentConfig(
+                            system_instruction=[
+                                SYSTEM_RULE_LOCAL
+                            ]
+                        ),
+                    )
+
+                    for chunk in response_stream:
+                        print(Fore.GREEN + chunk.text)
                 
-                # Use OpenAI as fallback
-                response = openai_client.chat.completions.create(
-                    model="gpt-4o-mini",  # Updated to newer, faster model
-                    messages=[
-                        {"role": "system", "content": SYSTEM_RULE},
-                        {"role": "user", "content": prompt}
-                    ],
-                    # max_tokens=20,
-                    temperature=0.7,
-                )
+                except RateLimitError:
+                    print(Fore.RED + "\n[ERROR] Free API limit reached.")
+                    print(Fore.YELLOW + "→ Switching to OpenAI paid model.\n")
+
+                    # Use OpenAI as fallback
+                    response = openai_client.chat.completions.create(
+                        model="gpt-4o-mini",  # Updated to newer, faster model
+                        messages=[
+                            {"role": "system", "content": SYSTEM_RULE_BASIC},
+                            {"role": "user", "content": prompt}
+                        ],
+                        # max_tokens=20,
+                        temperature=0.7,
+                    )
+
+
                 
                 response_text = response.choices[0].message.content
                 print(Fore.GREEN + response_text)
@@ -343,7 +390,7 @@ if __name__ == "__main__":
     option = input()
 
     if option == "y":
-        yes = LocalAI("y")
+        LocalAI("y")
     
     # Run optimized transcription
     transcribe_optimized()
