@@ -28,6 +28,39 @@
 
 import './index.css';
 
-console.log(
-  '👋 This message is being logged by "renderer.js", included via webpack',
-);
+const START_BTN = document.getElementById('recordBtn')
+// const RESULTS = doucment.getElementById('resultBox')
+
+let isRecording = false
+let speechObj = null
+
+const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
+
+if(!SpeechRecognition) {
+    START_BTN.innerText = "Speech Recognition is not enabled"
+    START_BTN.disabled = true
+
+}
+
+START_BTN.addEventListener('click', () => {
+        isRecording = !isRecording
+        isRecording ? startRecording() : stopRecording()
+})
+
+function startRecording() {
+    START_BTN.innerText = "Recording..."
+    speechObj = new SpeechRecognition()
+    speechObj.start()
+    speechObj.onresult = transcribe
+}
+
+function transcribe(e) { // e: SpeechRecognitonEvent
+    console.log(e)
+    // RESULTS.textContent += '${transcript} '
+}
+
+function stopRecording() {
+    speechObj.stop()
+    speechObj = null
+    START_BTN.innerText = "START"
+}
